@@ -104,7 +104,7 @@ This work was authored by researchers at the National Laboratory of the Rockies 
 For convenience, we also provide the following for your BibTex:
 
 ```
-@misc{Randall-2024,
+@misc{randall2024thevenin,
   author = {Randall, Corey R.},
   title = {{thevenin: Equivalent circuit models in Python [SWR-24-132]}},
   url = {github.com/NREL/thevenin},
