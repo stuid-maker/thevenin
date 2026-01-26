@@ -51,4 +51,4 @@ Roadmap and Future Directions
 
 Contributions
 -------------
-The `thevenin` project is hosted and actively maintained on `GitHub <https://github.com/NREL/thevenin>`_. Developers interested in contributing are encouraged to review the Code structure and Workflow sections for detailed information on the branching strategy, code review process, and how to get involved. All contributions are welcome.
+The `thevenin` project is hosted and actively maintained on `GitHub <https://github.com/NatLabRockies/thevenin>`_. Developers interested in contributing are encouraged to review the Code structure and Workflow sections for detailed information on the branching strategy, code review process, and how to get involved. All contributions are welcome.

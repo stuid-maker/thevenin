@@ -1,7 +1,7 @@
 <!-- <img alt='Logo' style='width: 75%; min-width: 250px; max-width: 500px;' 
- src='https://github.com/NREL/thevenin/blob/main/images/dark.png?raw=true#gh-dark-mode-only'/>
+ src='https://github.com/NatLabRockies/thevenin/blob/main/images/dark.png?raw=true#gh-dark-mode-only'/>
 <img alt='Logo' style='width: 75%; min-width: 250px; max-width: 500px;' 
- src='https://github.com/NREL/thevenin/blob/main/images/light.png?raw=true#gh-light-mode-only'/> -->
+ src='https://github.com/NatLabRockies/thevenin/blob/main/images/light.png?raw=true#gh-light-mode-only'/> -->
 
  # thevenin
 
@@ -10,11 +10,11 @@
 ![coverage][cov-b] &nbsp;
 [![pep8][pep-b]][pep-l]
 
-[ci-b]: https://github.com/NREL/thevenin/actions/workflows/ci.yml/badge.svg
-[ci-l]: https://github.com/NREL/thevenin/actions/workflows/ci.yml
+[ci-b]: https://github.com/NatLabRockies/thevenin/actions/workflows/ci.yml/badge.svg
+[ci-l]: https://github.com/NatLabRockies/thevenin/actions/workflows/ci.yml
 
-[test-b]: https://github.com/NREL/thevenin/blob/main/images/tests.svg?raw=true
-[cov-b]: https://github.com/NREL/thevenin/blob/main/images/coverage.svg?raw=true
+[test-b]: https://github.com/NatLabRockies/thevenin/blob/main/images/tests.svg?raw=true
+[cov-b]: https://github.com/NatLabRockies/thevenin/blob/main/images/coverage.svg?raw=true
 
 [pep-b]: https://img.shields.io/badge/code%20style-pep8-orange.svg
 [pep-l]: https://www.python.org/dev/peps/pep-0008
@@ -24,7 +24,7 @@ This package is a wrapper for the well-known Thevenin equivalent circuit model. 
 
 <p align="center">
   <img alt="2RC Thevenin circuit." style="width: 75%; min-width: 250px; max-width: 500px;" 
-   src="https://github.com/NREL/thevenin/blob/main/images/example_circuit.png?raw=true"/>
+   src="https://github.com/NatLabRockies/thevenin/blob/main/images/example_circuit.png?raw=true"/>
   </br>
   Figure 1: 2RC Thevenin circuit.
 </p>
@@ -72,7 +72,7 @@ If you prefer using the `conda` package manager, you can install `thevenin` from
 conda install -c conda-forge thevenin
 ```
 
-If you run into issues with installation due to the [scikit-sundae](https://github.com/NREL/scikit-sundae) dependency, please submit an issue [here](https://github.com/NREL/scikit-sundae/issues). We also manage this solver package, but distribute it separately since it is not developed in pure Python.
+If you run into issues with installation due to the [scikit-sundae](https://github.com/NatLabRockies/scikit-sundae) dependency, please submit an issue [here](https://github.com/NatLabRockies/scikit-sundae/issues). We also manage this solver package, but distribute it separately since it is not developed in pure Python.
 
 For those interested in setting up a developer and/or editable version of this software, please see the directions available in the "Development" section of our [documentation](https://thevenin.readthedocs.io/latest/development).
 
@@ -99,7 +99,7 @@ soln.plot('time_h', 'voltage_V')
 ## Citing this Work
 This work was authored by researchers at the National Laboratory of the Rockies (NLR). If you use this package in your work, please include the following citation:
 
-> Randall, Corey R. "thevenin: Equivalent circuit models in Python [SWR-24-132]." Computer software, Nov. 2024. url: [github.com/NREL/thevenin](https://github.com/NREL/thevenin). doi: [10.11578/dc.20241125.2](https://doi.org/10.11578/dc.20241125.2).
+> Randall, Corey R. "thevenin: Equivalent circuit models in Python [SWR-24-132]." Computer software, Nov. 2024. url: [github.com/NatLabRockies/thevenin](https://github.com/NatLabRockies/thevenin). doi: [10.11578/dc.20241125.2](https://doi.org/10.11578/dc.20241125.2).
 
 For convenience, we also provide the following for your BibTex:
 
@@ -107,7 +107,7 @@ For convenience, we also provide the following for your BibTex:
 @misc{randall2024thevenin,
   author = {Randall, Corey R.},
   title = {{thevenin: Equivalent circuit models in Python [SWR-24-132]}},
-  url = {github.com/NREL/thevenin},
+  url = {github.com/NatLabRockies/thevenin},
   month = {Nov.},
   year = {2024},
   doi = {10.11578/dc.20241125.2},
@@ -118,7 +118,7 @@ For convenience, we also provide the following for your BibTex:
 The motivation and funding for this project came from the Rapid Operational Validation Initiative (ROVI) sponsored by the Office of Electricity. The focus of ROVI is "to greatly reduce time required for emerging energy storage technologies to go from lab to market by developing new tools that will accelerate the testing and validation process needed to ensure commercial success." If interested, you can read more about ROVI [here](https://www.energy.gov/oe/rapid-operational-validation-initiative-rovi).
 
 ## Contributing
-If you'd like to contribute to this package, please look through the existing [issues](https://github.com/NREL/thevenin/issues). If the bug you've caught or the feature you'd like to add isn't already being worked on, please submit a new issue before getting started. You should also read through the [developer guidelines](https://thevenin.readthedocs.io/latest/development).
+If you'd like to contribute to this package, please look through the existing [issues](https://github.com/NatLabRockies/thevenin/issues). If the bug you've caught or the feature you'd like to add isn't already being worked on, please submit a new issue before getting started. You should also read through the [developer guidelines](https://thevenin.readthedocs.io/latest/development).
 
 ## Disclaimer
 This work was authored by the National Laboratory of the Rockies (NLR), operated by Alliance for Energy Innovation, LLC, for the U.S. Department of Energy (DOE). The views expressed in the repository do not necessarily represent the views of the DOE or the U.S. Government.

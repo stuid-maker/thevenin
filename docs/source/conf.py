@@ -75,7 +75,7 @@ html_theme_options = {
     'icon_links': [
         {
             'name': 'GitHub',
-            'url': 'https://github.com/NREL/thevenin',
+            'url': 'https://github.com/NatLabRockies/thevenin',
             'icon': 'fa-brands fa-github',
         },
         {
