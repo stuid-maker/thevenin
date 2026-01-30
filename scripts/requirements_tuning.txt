@@ -1,0 +1,4 @@
+# 贝叶斯调参脚本 bayesian_tune_params.py 所需依赖
+# 在项目根目录 thevenin 下执行: pip install -r scripts/requirements_tuning.txt
+scikit-optimize>=0.9.0
+scipy>=1.7.0

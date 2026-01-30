@@ -1,0 +1,16 @@
+{
+  "best_params": {
+    "R0_ref": 0.19285938749481163,
+    "R1_ref": 0.019649983295492016,
+    "R2_ref": 0.09053310721512675,
+    "C1_ref": 2545.258711783176,
+    "C2_ref": 200.0,
+    "ocv_bias": 0.2
+  },
+  "best_rmse_V": 0.091421207843667,
+  "capacity_Ah": 2.0,
+  "data_dir": "C:\\Users\\33755\\Desktop\\美赛\\thevenin\\data_Parameter tuning",
+  "n_calls": 100,
+  "n_cycles_used": 10,
+  "ocv_bias": 0.2
+}
