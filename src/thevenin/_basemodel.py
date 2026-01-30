@@ -344,6 +344,7 @@ class BaseModel(ABC):
 
         # dependent parameters
         Q_inv = 1. / (3600. * self.capacity)
+        # 温度相关：暂不考虑温度/环境时设 isothermal=True，此项不参与计算
         alpha_inv = 1. / (self.mass * self.Cp * self._T_ref)
 
         # current, voltage, and power - different for Simulation/Prediction
@@ -361,14 +362,15 @@ class BaseModel(ABC):
         ce = 1. if current >= 0. else self.ce
         rhs[ptr['soc']] = -ce*current*Q_inv
 
-        # temperature (differential)
+        # temperature (differential) —— 暂不考虑温度/环境时设 isothermal=True
+        # Q_gen = current*(ocv + hyst - voltage)
+        # Q_conv = self.h_therm*self.A_therm*(self.T_inf - T_cell)
         Q_gen = current*(ocv + hyst - voltage)
         Q_conv = self.h_therm*self.A_therm*(self.T_inf - T_cell)
-
         rhs[ptr['T_cell']] = alpha_inv * (Q_gen + Q_conv) \
                            * (1 - self.isothermal)
 
-        # hysteresis (differential)
+        # hysteresis (differential) —— 暂不考虑迟滞时设 gamma=0, M_hyst=0
         direction = -np.sign(current)
         coeff = np.abs(ce*current*self.gamma*Q_inv)
         rhs[ptr['hyst']] = coeff*(direction*self.M_hyst(soc) - hyst)
@@ -465,7 +467,7 @@ def _yaml_reader(file: str) -> dict:
 
     add_constructor('!eval', eval_constructor, constructor=SafeConstructor)
 
-    with open(file, 'r') as f:
+    with open(file, 'r', encoding='utf-8') as f:
         data = reader.load(f)
 
     return data
