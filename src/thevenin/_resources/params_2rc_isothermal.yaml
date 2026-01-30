@@ -25,18 +25,19 @@ ocv: !eval |
     lambda soc: 84.6*soc**7 - 348.6*soc**6 + 592.3*soc**5 - 534.3*soc**4 \
                 + 275.0*soc**3 - 80.3*soc**2 + 12.8*soc + 2.8
 
-# 内阻（Ohm）：手机电池典型 20~80 mΩ，太小则 I²R 产热可忽略
+# 内阻（Ohm）：Arrhenius 律 R(T)=R_ref·exp[(Ea/k)·(1/T_cell−1/T_ref)]，温度升高 R 降低
+# T_ref=298.15K(25°C)，Ea/k≈4000 时电压恢复现象明显
 R0: !eval |
-    lambda soc, T_cell: 0.04
+    lambda soc, T_cell: 0.04 * np.exp(4000.0 * (1.0 / T_cell - 1.0 / 298.15))
 
 # 第 1 个 RC 对
 R1: !eval |
-    lambda soc, T_cell: 0.02
+    lambda soc, T_cell: 0.02 * np.exp(4000.0 * (1.0 / T_cell - 1.0 / 298.15))
 C1: !eval |
     lambda soc, T_cell: 1000.0
 
 # 第 2 个 RC 对
 R2: !eval |
-    lambda soc, T_cell: 0.02
+    lambda soc, T_cell: 0.02 * np.exp(4000.0 * (1.0 / T_cell - 1.0 / 298.15))
 C2: !eval |
     lambda soc, T_cell: 2000.0

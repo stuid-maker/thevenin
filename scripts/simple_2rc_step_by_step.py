@@ -2,8 +2,8 @@
 2-RC 等效电路一步步求解示例
 ============================
 - 锂电池：SOC、RC 过电位、端电压；外电路 I(t) 阶跃（待机→玩游戏→待机）。
-- 温度：引入热平衡方程 dT/dt = (1/C_th)[Q_gen - Q_diss]，
-  Q_gen = I²·R_total(T,SOC)，Q_diss = h·A·(T - T_env)。
+- 温度：热平衡 dT/dt = (1/C_th)[Q_gen - Q_diss]，
+  Q_gen = I²·R_total(T,SOC) + P_device(t)（电池产热 + 外电路 CPU/屏功耗），Q_diss = h·A·(T - T_env)。
 - 迟滞：不考虑（params 中 gamma=0）。
 运行前请先安装本包及依赖：在项目根目录执行
   pip install -e .
@@ -41,6 +41,17 @@ def I_step_A(t_s: float) -> float:
     return 0.1        # 游戏结束，切回待机
 
 
+# ---------- 外电路功耗 P_device(t)：CPU/屏幕等对电池的加热 [W]，不含电池 I²R ----------
+# t 为时间 [s]，返回功率 [W]
+def P_device_W(t_s: float) -> float:
+    t_h = t_s / 3600.0
+    if t_h < 0.2:
+        return 0.05   # 待机，CPU 休眠
+    if t_h < 0.5:
+        return 3.0    # 高负载游戏，CPU/GPU + 高亮屏
+    return 0.05       # 切回待机
+
+
 def main():
     # 1) 构建 2-RC 模型（仅电芯，不考虑温度/迟滞）
     params_path = "params_2rc_isothermal.yaml"  # 位于 thevenin._resources
@@ -70,22 +81,25 @@ def main():
     socs = [soc0]
     currents = [I_step_A(0.0)]
     temperatures = [T_cell]  # [K]
+    p_devices = [P_device_W(0.0)]  # [W]，外电路功耗
 
     for _ in range(n_steps - 1):
         t_start = times[-1]  # 当前步起始时间 [s]
         I_now = I_step_A(t_start)
+        P_dev = P_device_W(t_start)
         state = pred.take_step(state, I_now, dt_s)
         step_time = t_start + dt_s
         times.append(step_time)
         voltages.append(state.voltage)
         socs.append(state.soc)
         currents.append(I_step_A(step_time))
+        p_devices.append(P_device_W(step_time))
 
         # 温度微分方程：dT/dt = (1/C_th)[Q_gen - Q_diss]
-        # Q_gen = I²·R_total(T,SOC)，Q_diss = h·A·(T - T_env)
+        # Q_gen = I²·R_total + P_device(t)，Q_diss = h·A·(T - T_env)
         T_now = state.T_cell
         R_total = pred.R0(state.soc, T_now) + pred.R1(state.soc, T_now) + pred.R2(state.soc, T_now)
-        Q_gen = I_now**2 * R_total
+        Q_gen = I_now**2 * R_total + P_dev
         Q_diss = h_A * (T_now - T_env)
         dT_dt = (Q_gen - Q_diss) / C_th
         T_next = T_now + dT_dt * dt_s
@@ -97,10 +111,11 @@ def main():
     socs = np.array(socs)
     currents = np.array(currents)
     temperatures = np.array(temperatures)
+    p_devices = np.array(p_devices)
     T_celsius = temperatures - 273.15  # [°C]
 
-    # 4) 绘图：I(t)、V、SOC、T(t)（含温度热平衡，另存为 temp 版本，不覆盖原图）
-    fig, (ax0, ax1, ax2, ax3) = plt.subplots(4, 1, sharex=True, figsize=(8, 7))
+    # 4) 绘图：I(t)、P_device(t)、V、SOC、T(t)（含外电路功耗，不覆盖 figure3）
+    fig, (ax0, ax0b, ax1, ax2, ax3) = plt.subplots(5, 1, sharex=True, figsize=(8, 8))
     t_h = times / 3600.0
 
     ax0.step(t_h, currents, where="post", color="orange", label="I(t)")
@@ -108,6 +123,12 @@ def main():
     ax0.legend(loc="best")
     ax0.grid(True, alpha=0.3)
     ax0.set_title("阶跃电流：待机 → 玩游戏 → 待机")
+
+    ax0b.step(t_h, p_devices, where="post", color="purple", label="P_device(t)")
+    ax0b.set_ylabel("P_device [W]")
+    ax0b.legend(loc="best")
+    ax0b.grid(True, alpha=0.3)
+    ax0b.set_title("外电路功耗（CPU/屏，不含电池 I**2*R）")
 
     ax1.plot(t_h, voltages, "b-", label="V_cell")
     ax1.set_ylabel("Voltage [V]")
@@ -129,12 +150,12 @@ def main():
     ax3.axvline(0.2, color="gray", linestyle="--", alpha=0.5)
     ax3.axvline(0.5, color="gray", linestyle="--", alpha=0.5)
 
-    plt.suptitle("2-RC 等效电路（I(t) 阶跃 + 热平衡）")
+    plt.suptitle("2-RC 等效电路（I(t) 阶跃 + 热平衡 + 外电路功耗 P_device）")
     plt.tight_layout()
-    out_path = ROOT / "scripts" / "figure3_加入温度热平衡.svg"
+    out_path = ROOT / "scripts" / "figure4_加入外电路功耗.svg"
     plt.savefig(out_path, format="svg")
     plt.show()
-    print(f"结果已保存至 scripts/{out_path.name}")
+    print(f"结果已保存至 scripts/{out_path.name}（Q_gen = I²R_total + P_device）")
 
 
 if __name__ == "__main__":
