@@ -1,9 +1,10 @@
 """
 2-RC 等效电路一步步求解示例
 ============================
-- 仅考虑锂电池本身：SOC、RC 过电位、端电压。
-- 温度、环境、迟滞：暂不考虑（已在 params 中关闭：isothermal=True, gamma=0）。
-- 外电路 I(t)：暂时以参数形式传入（常量或可调用），后续可替换为实测/工况。
+- 锂电池：SOC、RC 过电位、端电压；外电路 I(t) 阶跃（待机→玩游戏→待机）。
+- 温度：引入热平衡方程 dT/dt = (1/C_th)[Q_gen - Q_diss]，
+  Q_gen = I²·R_total(T,SOC)，Q_diss = h·A·(T - T_env)。
+- 迟滞：不考虑（params 中 gamma=0）。
 运行前请先安装本包及依赖：在项目根目录执行
   pip install -e .
 然后：
@@ -29,9 +30,15 @@ plt.rcParams["axes.unicode_minus"] = False
 import thevenin as thev
 
 
-# ---------- 外电路 I(t)：暂时带参数，先不考虑具体形式 ----------
-# 可改为常数（单位 A），或改为 callable: I(t) -> float，t 为当前步内相对时间 [s]
-CURRENT_A = 10.0   # 放电电流 [A]，正为放电
+# ---------- 外电路 I(t)：阶跃信号（模拟手机：待机 -> 玩游戏 -> 待机）----------
+# t 为时间 [s]，返回电流 [A]
+def I_step_A(t_s: float) -> float:
+    t_h = t_s / 3600.0  # 转为小时
+    if t_h < 0.2:
+        return 0.1   # 待机
+    if t_h < 0.5:
+        return 2.0   # 玩游戏（大电流）
+    return 0.1        # 游戏结束，切回待机
 
 
 def main():
@@ -46,48 +53,88 @@ def main():
     eta_j0 = np.zeros(pred.num_RC_pairs)
     state = thev.TransientState(soc=soc0, T_cell=T_cell, hyst=hyst0, eta_j=eta_j0)
 
-    # 3) 一步步求解：固定步长，I(t) 暂时为常数
+    # 3) 一步步求解：固定步长，I(t) 为阶跃信号
     dt_s = 1.0          # 步长 [s]
-    t_end_s = 3600.0    # 总时长 [s]
+    t_end_s = 3600.0    # 总时长 [s]，覆盖 0.2h、0.5h 阶跃
     n_steps = int(t_end_s / dt_s) + 1   # 时间点个数，含 t=0 与 t=t_end_s
 
-    # t=0 初始电压：V = OCV - I*R0（eta_j=0, hyst=0）
-    v0 = pred.ocv(soc0) - CURRENT_A * pred.R0(soc0, T_cell)
+    # 热平衡参数（从 params 读取：C_th = mass*Cp，散热 h·A·(T - T_env)）
+    C_th = pred.mass * pred.Cp  # 热容 [J/K]
+    h_A = pred.h_therm * pred.A_therm  # 对流换热 h·A [W/K]
+    T_env = pred.T_inf  # 环境温度 [K]
+
+    # t=0 初始电压：V = OCV - I(0)*R0（eta_j=0, hyst=0）
+    v0 = pred.ocv(soc0) - I_step_A(0.0) * pred.R0(soc0, T_cell)
     times = [0.0]
     voltages = [v0]
     socs = [soc0]
+    currents = [I_step_A(0.0)]
+    temperatures = [T_cell]  # [K]
 
     for _ in range(n_steps - 1):
-        # I(t) 暂时为常数；后续可改为 lambda t: some_load(t)
-        state = pred.take_step(state, CURRENT_A, dt_s)
-        # 每步后的时间、电压、SOC 需自行累积（take_step 只返回当前步末状态）
-        step_time = (len(times)) * dt_s
+        t_start = times[-1]  # 当前步起始时间 [s]
+        I_now = I_step_A(t_start)
+        state = pred.take_step(state, I_now, dt_s)
+        step_time = t_start + dt_s
         times.append(step_time)
         voltages.append(state.voltage)
         socs.append(state.soc)
+        currents.append(I_step_A(step_time))
+
+        # 温度微分方程：dT/dt = (1/C_th)[Q_gen - Q_diss]
+        # Q_gen = I²·R_total(T,SOC)，Q_diss = h·A·(T - T_env)
+        T_now = state.T_cell
+        R_total = pred.R0(state.soc, T_now) + pred.R1(state.soc, T_now) + pred.R2(state.soc, T_now)
+        Q_gen = I_now**2 * R_total
+        Q_diss = h_A * (T_now - T_env)
+        dT_dt = (Q_gen - Q_diss) / C_th
+        T_next = T_now + dT_dt * dt_s
+        state.T_cell = T_next
+        temperatures.append(T_next)
 
     times = np.array(times)
     voltages = np.array(voltages)
     socs = np.array(socs)
+    currents = np.array(currents)
+    temperatures = np.array(temperatures)
+    T_celsius = temperatures - 273.15  # [°C]
 
-    # 4) 简单绘图
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(8, 5))
-    ax1.plot(times / 3600.0, voltages, "b-", label="V_cell")
+    # 4) 绘图：I(t)、V、SOC、T(t)（含温度热平衡，另存为 temp 版本，不覆盖原图）
+    fig, (ax0, ax1, ax2, ax3) = plt.subplots(4, 1, sharex=True, figsize=(8, 7))
+    t_h = times / 3600.0
+
+    ax0.step(t_h, currents, where="post", color="orange", label="I(t)")
+    ax0.set_ylabel("Current [A]")
+    ax0.legend(loc="best")
+    ax0.grid(True, alpha=0.3)
+    ax0.set_title("阶跃电流：待机 → 玩游戏 → 待机")
+
+    ax1.plot(t_h, voltages, "b-", label="V_cell")
     ax1.set_ylabel("Voltage [V]")
     ax1.legend(loc="best")
     ax1.grid(True, alpha=0.3)
+    ax1.axvline(0.2, color="gray", linestyle="--", alpha=0.5)
+    ax1.axvline(0.5, color="gray", linestyle="--", alpha=0.5)
 
-    ax2.plot(times / 3600.0, socs, "g-", label="SOC")
+    ax2.plot(t_h, socs, "g-", label="SOC")
     ax2.set_ylabel("SOC [-]")
-    ax2.set_xlabel("Time [h]")
     ax2.legend(loc="best")
     ax2.grid(True, alpha=0.3)
 
-    plt.suptitle("2-RC 等效电路 （I=const，不考虑温度/磁滞效应）")
+    ax3.plot(t_h, T_celsius, "r-", label="T_cell")
+    ax3.set_ylabel("Temperature [°C]")
+    ax3.set_xlabel("Time [h]")
+    ax3.legend(loc="best")
+    ax3.grid(True, alpha=0.3)
+    ax3.axvline(0.2, color="gray", linestyle="--", alpha=0.5)
+    ax3.axvline(0.5, color="gray", linestyle="--", alpha=0.5)
+
+    plt.suptitle("2-RC 等效电路（I(t) 阶跃 + 热平衡）")
     plt.tight_layout()
-    plt.savefig(ROOT / "scripts" / "simple_2rc_result.svg", format="svg")
+    out_path = ROOT / "scripts" / "figure3_加入温度热平衡.svg"
+    plt.savefig(out_path, format="svg")
     plt.show()
-    print("结果已保存至 scripts/simple_2rc_result.svg")
+    print(f"结果已保存至 scripts/{out_path.name}")
 
 
 if __name__ == "__main__":
