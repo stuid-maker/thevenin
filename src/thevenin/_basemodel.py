@@ -140,8 +140,9 @@ class BaseModel(ABC):
 
         Notes
         -----
-        The 'ocv' and 'M_hyst' properties need to be callables with signatures
-        like `f(soc: float) -> float`, where 'soc' is the state of charge.
+        The 'ocv' property needs a callable with signature
+        `f(soc: float, T_cell: float) -> float` (OCV may depend on temperature).
+        The 'M_hyst' property needs a callable like `f(soc: float) -> float`.
         All other properties that require callables (e.g., R0, Rj, and Cj) need
         signatures like `f(soc: float, T_cell: float) -> float`, with 'T_cell'
         being the cell temperature in K.
@@ -339,7 +340,7 @@ class BaseModel(ABC):
         eta_j = sv[ptr['eta_j']]
 
         # state-dependent properties
-        ocv = self.ocv(soc)
+        ocv = self.ocv(soc, T_cell)
         R0 = self.R0(soc, T_cell)
 
         # dependent parameters

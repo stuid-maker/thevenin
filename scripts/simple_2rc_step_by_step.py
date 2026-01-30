@@ -41,6 +41,11 @@ def I_step_A(t_s: float) -> float:
     return 0.1        # 游戏结束，切回待机
 
 
+# ---------- 电压/电流截止（锂电单节典型范围）----------
+V_MIN = 2.5    # 放电截止电压 [V]
+V_MAX = 4.25   # 充电截止电压 [V]
+I_CUTOFF_A = 0.05  # 截止电流 [A]，|I| < 此值可视为静置
+
 # ---------- 外电路功耗 P_device(t)：CPU/屏幕等对电池的加热 [W]，不含电池 I²R ----------
 # t 为时间 [s]，返回功率 [W]
 def P_device_W(t_s: float) -> float:
@@ -52,10 +57,154 @@ def P_device_W(t_s: float) -> float:
     return 0.05       # 切回待机
 
 
+# ---------- 老化：每日工况（白天打游戏 2h，晚上待机）----------
+# t_s：当日 0 点起秒数 [s]，返回电流 [A]、外电路功率 [W]
+def I_daily_A(t_s: float) -> float:
+    if t_s < 2 * 3600:
+        return 2.0   # 前 2h 游戏
+    return 0.1       # 其余待机
+
+
+def P_device_daily_W(t_s: float) -> float:
+    # 游戏时仅部分 CPU/屏热传到电芯，取 ~1 W 避免 T_avg 虚高（4 W 时稳态可达 ~79°C）
+    if t_s < 2 * 3600:
+        return 1.0
+    return 0.05
+
+
+def run_one_day(pred, SOH: float, dt_s: float, t_end_s: float, I_fn, P_device_fn):
+    """
+    跑一天的仿真，输入当前 SOH，输出当日统计（用于老化结算）。
+    假设每天从满电、常温开始（如夜间充满）。
+    调用前需已通过 update_battery_params 将 pred.capacity / R 按 SOH 更新，本函数不再改 capacity。
+    """
+    C_th = pred.mass * pred.Cp
+    h_A = pred.h_therm * pred.A_therm
+    T_env = pred.T_inf
+    soc0, T_cell = pred.soc0, pred.T_inf
+    state = thev.TransientState(soc=soc0, T_cell=T_cell, hyst=0.0, eta_j=np.zeros(pred.num_RC_pairs))
+    v0 = pred.ocv(soc0, T_cell) - I_fn(0.0) * pred.R0(soc0, T_cell)
+    times, voltages, socs, currents, temperatures = [0.0], [v0], [soc0], [I_fn(0.0)], [T_cell]
+    Ah_sum = 0.0
+
+    t = 0.0
+    while t + dt_s <= t_end_s:
+        I_now = I_fn(t)
+        P_dev = P_device_fn(t)
+        state = pred.take_step(state, I_now, dt_s)
+        t += dt_s
+        V_now = state.voltage
+        if I_now > 0 and V_now <= V_MIN:
+            times.append(t)
+            voltages.append(V_now)
+            socs.append(state.soc)
+            currents.append(I_fn(t))
+            temperatures.append(state.T_cell)
+            Ah_sum += abs(I_now) * dt_s / 3600.0
+            break
+        if I_now < 0 and V_now >= V_MAX:
+            times.append(t)
+            voltages.append(V_now)
+            socs.append(state.soc)
+            currents.append(I_fn(t))
+            temperatures.append(state.T_cell)
+            Ah_sum += abs(I_now) * dt_s / 3600.0
+            break
+        times.append(t)
+        voltages.append(V_now)
+        socs.append(state.soc)
+        currents.append(I_fn(t))
+        Ah_sum += abs(I_now) * dt_s / 3600.0
+        T_now = state.T_cell
+        R_total = pred.R0(state.soc, T_now) + pred.R1(state.soc, T_now) + pred.R2(state.soc, T_now)
+        Q_gen = I_now**2 * R_total + P_dev
+        Q_diss = h_A * (T_now - T_env)
+        T_next = T_now + (Q_gen - Q_diss) / C_th * dt_s
+        state.T_cell = T_next
+        temperatures.append(T_next)
+
+    # 全天平均温度（0~24h 所有时间步等权，非仅高功耗时段）
+    T_avg_K = np.mean(temperatures)
+    soc_arr = np.array(socs)
+    DOD = float(np.max(soc_arr) - np.min(soc_arr)) if len(soc_arr) > 0 else 0.0
+    return {
+        "T_avg_K": T_avg_K,
+        "Ah_throughput": Ah_sum,
+        "DOD": DOD,
+        "SOC_min": float(np.min(soc_arr)) if len(soc_arr) > 0 else soc0,
+        "SOC_max": float(np.max(soc_arr)) if len(soc_arr) > 0 else soc0,
+    }
+
+
+def calculate_aging(T_avg_K: float, Ah_throughput: float, Q_nominal: float) -> float:
+    """
+    老化结算：根据当日平均温度与安时通过量，扣除一点寿命（SOH 下降量）。
+    公式参考：Q_loss ∝ exp(-Ea/RT) * (Ah)^z，即高温、大安时加速老化。
+    """
+    T_ref = 298.15
+    Ea_over_R = 4000.0   # [K]，与 Arrhenius 内阻一致量级
+    k_aging = 0.65e-3     # 标定系数（约比 75 Ah 时调小 18 倍，配合 Q_nominal=4 Ah 手机工况）
+    z = 0.6              # Ah 指数，次线性
+    # 相对老化率：温度越高、Ah 越多，loss 越大
+    aging_loss = k_aging * (Ah_throughput / Q_nominal) ** z * np.exp(Ea_over_R * (1.0 / T_avg_K - 1.0 / T_ref))
+    return min(aging_loss, 0.01)  # 单日最多扣 1%，避免数值异常
+
+
+def update_battery_params(pred, SOH: float, capacity_nominal: float, R0_base, R1_base, R2_base):
+    """根据当前 SOH 更新容量与内阻：容量线性下降，内阻随 SOH 下降而增大。"""
+    pred.capacity = capacity_nominal * SOH
+    r_SOH = 0.8  # SOH 从 1 降到 0 时，内阻约增至 1 + r_SOH
+    pred.R0 = lambda soc, T_cell: R0_base(soc, T_cell) * (1.0 + r_SOH * (1.0 - SOH))
+    pred.R1 = lambda soc, T_cell: R1_base(soc, T_cell) * (1.0 + r_SOH * (1.0 - SOH))
+    pred.R2 = lambda soc, T_cell: R2_base(soc, T_cell) * (1.0 + r_SOH * (1.0 - SOH))
+
+
+# ---------- 运行模式：True=老化模拟（天/次循环），False=单日 1h 绘图 ----------
+RUN_AGING = True
+AGING_DAYS = 365*4       # 测试 1 年；3 年可改为 365 * 3
+DAILY_DT_S = 60.0     # 每日仿真步长 [s]，86400/60=1440 步/天
+
+
 def main():
     # 1) 构建 2-RC 模型（仅电芯，不考虑温度/迟滞）
     params_path = "params_2rc_isothermal.yaml"  # 位于 thevenin._resources
     pred = thev.Prediction(params_path)
+    capacity_nominal = pred.capacity
+    R0_base, R1_base, R2_base = pred.R0, pred.R1, pred.R2
+
+    if RUN_AGING:
+        # === 上帝视角：模拟多年使用（天/次循环）===
+        SOH = 1.0
+        results = []
+        for day in range(AGING_DAYS):
+            update_battery_params(pred, SOH, capacity_nominal, R0_base, R1_base, R2_base)
+            daily_stats = run_one_day(
+                pred, SOH, dt_s=DAILY_DT_S, t_end_s=86400.0,
+                I_fn=I_daily_A, P_device_fn=P_device_daily_W,
+            )
+            aging_loss = calculate_aging(
+                daily_stats["T_avg_K"], daily_stats["Ah_throughput"], capacity_nominal
+            )
+            SOH = max(SOH - aging_loss, 0.0)
+            results.append({"day": day, "SOH": SOH, **daily_stats})
+            if day % 30 == 0:
+                print(f"第 {day} 天: SOH = {SOH*100:.2f}%, T_avg = {daily_stats['T_avg_K']-273.15:.1f}°C, Ah = {daily_stats['Ah_throughput']:.2f}")
+        # 简单绘制 SOH 随天数
+        days_arr = np.array([r["day"] for r in results])
+        soh_arr = np.array([r["SOH"] for r in results]) * 100
+        fig, ax = plt.subplots(figsize=(7, 4))
+        ax.plot(days_arr / 365.0, soh_arr, "b-", label="SOH")
+        ax.set_xlabel("Time [year]")
+        ax.set_ylabel("SOH [%]")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        plt.suptitle(f"电池老化模拟（{AGING_DAYS} 天，每日 2h 游戏 + 22h 待机）")
+        plt.tight_layout()
+        out_path = ROOT / "scripts" / "figure5_老化SOH.svg"
+        plt.savefig(out_path, format="svg")
+        plt.show()
+        print(f"老化结果已保存至 scripts/{out_path.name}")
+        return
 
     # 2) 初始状态：满电、无迟滞、RC 过电位为 0（与 params 中 soc0 一致）
     soc0 = pred.soc0
@@ -74,8 +223,8 @@ def main():
     h_A = pred.h_therm * pred.A_therm  # 对流换热 h·A [W/K]
     T_env = pred.T_inf  # 环境温度 [K]
 
-    # t=0 初始电压：V = OCV - I(0)*R0（eta_j=0, hyst=0）
-    v0 = pred.ocv(soc0) - I_step_A(0.0) * pred.R0(soc0, T_cell)
+    # t=0 初始电压：V = OCV(soc,T) - I(0)*R0（eta_j=0, hyst=0）
+    v0 = pred.ocv(soc0, T_cell) - I_step_A(0.0) * pred.R0(soc0, T_cell)
     times = [0.0]
     voltages = [v0]
     socs = [soc0]
@@ -89,8 +238,28 @@ def main():
         P_dev = P_device_W(t_start)
         state = pred.take_step(state, I_now, dt_s)
         step_time = t_start + dt_s
+        V_now = state.voltage
+        # 电压截止：放电时仅 V<=V_MIN 停止，充电时仅 V>=V_MAX 停止（满电初始 V 可略高于 V_MAX，不误判）
+        if I_now > 0 and V_now <= V_MIN:
+            times.append(step_time)
+            voltages.append(V_now)
+            socs.append(state.soc)
+            currents.append(I_step_A(step_time))
+            p_devices.append(P_device_W(step_time))
+            temperatures.append(state.T_cell)
+            print(f"放电截止：V={V_now:.3f} V <= {V_MIN} V，仿真在 t={step_time/3600:.3f} h 停止")
+            break
+        if I_now < 0 and V_now >= V_MAX:
+            times.append(step_time)
+            voltages.append(V_now)
+            socs.append(state.soc)
+            currents.append(I_step_A(step_time))
+            p_devices.append(P_device_W(step_time))
+            temperatures.append(state.T_cell)
+            print(f"充电截止：V={V_now:.3f} V >= {V_MAX} V，仿真在 t={step_time/3600:.3f} h 停止")
+            break
         times.append(step_time)
-        voltages.append(state.voltage)
+        voltages.append(V_now)
         socs.append(state.soc)
         currents.append(I_step_A(step_time))
         p_devices.append(P_device_W(step_time))

@@ -217,7 +217,7 @@ class Prediction(BaseModel):
         state = self._to_state(soln.y)
 
         # voltage prediction
-        ocv = self.ocv(state.soc)
+        ocv = self.ocv(state.soc, state.T_cell)
         R0 = self.R0(state.soc, state.T_cell)
 
         current = self._userdata['current'](soln.t)

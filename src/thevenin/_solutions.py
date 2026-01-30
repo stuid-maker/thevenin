@@ -163,7 +163,7 @@ class BaseSolution(IDAResult):
         voltage = self.y[:, ptr['V_cell']]
 
         try:
-            ocv = sim.ocv(soc)
+            ocv = sim.ocv(soc, T_cell)
             R0 = sim.R0(soc, T_cell)
 
             assert isinstance(ocv, np.ndarray)
@@ -176,7 +176,7 @@ class BaseSolution(IDAResult):
             ocv = np.empty_like(soc)
             R0 = np.empty_like(soc)
             for i in range(soc.size):
-                ocv[i] = sim.ocv(soc[i])
+                ocv[i] = sim.ocv(soc[i], T_cell[i])
                 R0[i] = sim.R0(soc[i], T_cell[i])
 
         current = calculated_current(voltage, ocv, hyst, eta_j, R0)

@@ -91,7 +91,7 @@ class Simulation(BaseModel):
         sv0[ptr['T_cell']] = self.T_inf / self._T_ref
         sv0[ptr['hyst']] = 0.
         sv0[ptr['eta_j']] = 0.
-        sv0[ptr['V_cell']] = self.ocv(self.soc0)
+        sv0[ptr['V_cell']] = self.ocv(self.soc0, self.T_inf)
 
         svdot0 = np.zeros_like(sv0)
 
@@ -121,7 +121,7 @@ class Simulation(BaseModel):
             sv0[ptr['T_cell']] = state0.T_cell / self._T_ref
             sv0[ptr['hyst']] = state0.hyst
             sv0[ptr['eta_j']] = state0.eta_j
-            sv0[ptr['V_cell']] = self.ocv(state0.soc)
+            sv0[ptr['V_cell']] = self.ocv(state0.soc, state0.T_cell)
 
             self._sv0 = sv0
             self._svdot0 = svdot0
