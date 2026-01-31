@@ -1,0 +1,11 @@
+{
+  "t_actual_s": 3669.875,
+  "t_predicted_s": 3647.875,
+  "error_absolute_s": 22.0,
+  "error_relative_percent": 0.5994754589733983,
+  "V_limit": 2.7,
+  "t_start_s": 600.0,
+  "cycle_index": 0,
+  "data_dir": "C:\\Users\\33755\\Desktop\\\u7f8e\u8d5b\\thevenin\\data_model_Verify",
+  "I_load_A": 2.0
+}

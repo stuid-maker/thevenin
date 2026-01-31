@@ -17,9 +17,11 @@ isothermal: True
 mass: 0.045
 Cp: 1050.0
 T_inf: 298.15
-# 被动散热：h 约 5~10 W/(m²K)，A 约 0.01 m²，hA 约 0.05~0.1 W/K
-h_therm: 8.0
-A_therm: 0.01
+# 固体导热：电池贴中框/石墨贴/液冷均热板；理论 h·A 可达 30~50 W/K，取较小值以得到可见温升（游戏约 35~40°C）
+h_therm: 20.0     # W/(m²·K)，h·A ≈ 0.2 W/K 时游戏 1h 温升约 10~15 K
+A_therm: 0.01     # m²
+# 外电路功耗传入电芯的比例 η：P_device 不能全算进电芯，仅 η 部分加热电芯，约 0.15~0.3
+eta_device: 0.3
 
 # OCV：开路电压随 SOC 与温度，OCV(soc,T)=OCV_ref(soc)+(T-T_ref)·dUoc/dT，dUoc/dT 约 0.3~0.5 mV/K
 ocv: !eval |

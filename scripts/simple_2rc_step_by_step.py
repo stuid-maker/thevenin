@@ -3,7 +3,8 @@
 ============================
 - 锂电池：SOC、RC 过电位、端电压；外电路 I(t) 阶跃（待机→玩游戏→待机）。
 - 温度：热平衡 dT/dt = (1/C_th)[Q_gen - Q_diss]，
-  Q_gen = I²·R_total(T,SOC) + P_device(t)（电池产热 + 外电路 CPU/屏功耗），Q_diss = h·A·(T - T_env)。
+  Q_gen = I²·R_total + η·P_device(t)，Q_diss = h·A·(T - T_env)；η 为传入电芯比例。
+- 外电路功耗 P_device 具体化：屏幕(大小+亮度)、处理器负载、网络活动、后台应用，参数暂自定义。
 - 迟滞：不考虑（params 中 gamma=0）。
 运行前请先安装本包及依赖：在项目根目录执行
   pip install -e .
@@ -46,30 +47,47 @@ V_MIN = 2.5    # 放电截止电压 [V]
 V_MAX = 4.25   # 充电截止电压 [V]
 I_CUTOFF_A = 0.05  # 截止电流 [A]，|I| < 此值可视为静置
 
-# ---------- 外电路功耗 P_device(t)：CPU/屏幕等对电池的加热 [W]，不含电池 I²R ----------
-# t 为时间 [s]，返回功率 [W]
-def P_device_W(t_s: float) -> float:
+# ---------- 外电路功耗具体化：按组件与状态查表汇总 ----------
+# 定义在 device_power_components.py（屏幕/处理器/网络/GPS/其他，含典型功耗与备注）
+from device_power_components import P_device_from_components
+
+
+# 单次 1h 演示：按时间段给出 (亮度, CPU负载, 网络活跃度)，再算 P_device
+def _device_state_single_demo(t_s: float) -> tuple:
     t_h = t_s / 3600.0
     if t_h < 0.2:
-        return 0.05   # 待机，CPU 休眠
+        return (0.0, 0.05, 0.0)   # 待机：熄屏、低 CPU、低网络
     if t_h < 0.5:
-        return 3.0    # 高负载游戏，CPU/GPU + 高亮屏
-    return 0.05       # 切回待机
+        return (0.85, 0.88, 0.4)   # 游戏：高亮、高 CPU、中等网络（如联机）
+    return (0.15, 0.05, 0.1)      # 切回待机
+
+
+# 每日工况：前 2h 游戏，其余待机
+def _device_state_daily(t_s: float) -> tuple:
+    if t_s < 2 * 3600:
+        return (0.80, 0.85, 0.35)  # 游戏
+    return (0.12, 0.06, 0.12)     # 待机（含偶尔亮屏/同步）
+
+
+# ---------- 外电路功耗 P_device(t) [W]：由具体分量汇总 ----------
+def P_device_W(t_s: float) -> float:
+    """单次 1h 演示下的外电路功耗 [W]。"""
+    b, c, n = _device_state_single_demo(t_s)
+    return P_device_from_components(b, c, n)
 
 
 # ---------- 老化：每日工况（白天打游戏 2h，晚上待机）----------
-# t_s：当日 0 点起秒数 [s]，返回电流 [A]、外电路功率 [W]
 def I_daily_A(t_s: float) -> float:
+    """t_s：当日 0 点起秒数 [s]，返回电流 [A]。"""
     if t_s < 2 * 3600:
         return 2.0   # 前 2h 游戏
     return 0.1       # 其余待机
 
 
 def P_device_daily_W(t_s: float) -> float:
-    # 游戏时仅部分 CPU/屏热传到电芯，取 ~1 W 避免 T_avg 虚高（4 W 时稳态可达 ~79°C）
-    if t_s < 2 * 3600:
-        return 1.0
-    return 0.05
+    """每日工况下的外电路功耗 [W]，由屏幕/CPU/网络/后台分量汇总。"""
+    b, c, n = _device_state_daily(t_s)
+    return P_device_from_components(b, c, n)
 
 
 def run_one_day(pred, SOH: float, dt_s: float, t_end_s: float, I_fn, P_device_fn):
@@ -117,7 +135,8 @@ def run_one_day(pred, SOH: float, dt_s: float, t_end_s: float, I_fn, P_device_fn
         Ah_sum += abs(I_now) * dt_s / 3600.0
         T_now = state.T_cell
         R_total = pred.R0(state.soc, T_now) + pred.R1(state.soc, T_now) + pred.R2(state.soc, T_now)
-        Q_gen = I_now**2 * R_total + P_dev
+        eta = getattr(pred, "eta_device", 0.2)
+        Q_gen = I_now**2 * R_total + eta * P_dev
         Q_diss = h_A * (T_now - T_env)
         T_next = T_now + (Q_gen - Q_diss) / C_th * dt_s
         state.T_cell = T_next
@@ -160,8 +179,8 @@ def update_battery_params(pred, SOH: float, capacity_nominal: float, R0_base, R1
 
 
 # ---------- 运行模式：True=老化模拟（天/次循环），False=单日 1h 绘图 ----------
-RUN_AGING = True
-AGING_DAYS = 365*4       # 测试 1 年；3 年可改为 365 * 3
+RUN_AGING = False
+AGING_DAYS = 365*2       # 测试 2 年；3 年可改为 365 * 3
 DAILY_DT_S = 60.0     # 每日仿真步长 [s]，86400/60=1440 步/天
 
 
@@ -265,10 +284,11 @@ def main():
         p_devices.append(P_device_W(step_time))
 
         # 温度微分方程：dT/dt = (1/C_th)[Q_gen - Q_diss]
-        # Q_gen = I²·R_total + P_device(t)，Q_diss = h·A·(T - T_env)
+        # Q_gen = I²·R_total + η·P_device(t)，Q_diss = h·A·(T - T_env)
         T_now = state.T_cell
         R_total = pred.R0(state.soc, T_now) + pred.R1(state.soc, T_now) + pred.R2(state.soc, T_now)
-        Q_gen = I_now**2 * R_total + P_dev
+        eta = getattr(pred, "eta_device", 0.2)
+        Q_gen = I_now**2 * R_total + eta * P_dev
         Q_diss = h_A * (T_now - T_env)
         dT_dt = (Q_gen - Q_diss) / C_th
         T_next = T_now + dT_dt * dt_s
@@ -297,7 +317,7 @@ def main():
     ax0b.set_ylabel("P_device [W]")
     ax0b.legend(loc="best")
     ax0b.grid(True, alpha=0.3)
-    ax0b.set_title("外电路功耗（CPU/屏，不含电池 I**2*R）")
+    ax0b.set_title("外电路功耗（屏幕+处理器+网络+后台，不含电池 I²R）")
 
     ax1.plot(t_h, voltages, "b-", label="V_cell")
     ax1.set_ylabel("Voltage [V]")

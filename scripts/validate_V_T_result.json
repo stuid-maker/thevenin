@@ -1,0 +1,8 @@
+{
+  "RMSE_voltage_V": 0.09268851555766978,
+  "RMSE_temperature_C": 2.8395292072148623,
+  "cycle_index": 0,
+  "data_dir": "C:\\Users\\33755\\Desktop\\\u7f8e\u8d5b\\thevenin\\data_model_Verify",
+  "T_amb_C": 24.0,
+  "n_points": 197
+}

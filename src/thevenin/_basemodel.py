@@ -191,6 +191,8 @@ class BaseModel(ABC):
         self.T_inf = params.pop('T_inf')
         self.h_therm = params.pop('h_therm')
         self.A_therm = params.pop('A_therm')
+        # 外电路功耗传入电芯的比例 η，Q_gen 中设备热为 η*P_device，缺省 0.2
+        self.eta_device = params.pop('eta_device', 0.2)
 
         self.ocv = params.pop('ocv')
         self.R0 = params.pop('R0')
